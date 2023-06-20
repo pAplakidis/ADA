@@ -1,0 +1,6 @@
+[submodule "OpenCRD"]
+	path = OpenCRD
+	url = https://github.com/pAplakidis/OpenCRD.git
+[submodule "SDAL"]
+	path = SDAL
+	url = https://github.com/pAplakidis/SDAL.git
