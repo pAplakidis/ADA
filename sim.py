@@ -23,8 +23,6 @@ except IndexError as e:
 
 import carla
 
-# TODO: add traffic and pedestrians
-
 # EXAMPLE RUN: OUT_PATH="../collected_data/23/" MAP=2 ./carla_collector.py
 
 IMG_WIDTH = 1164
@@ -37,9 +35,9 @@ N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
 DESIRE = {0: "forward",
           1: "right",
           2: "left"}
-# in carla.LightState enum, the 4th and 5th bit represent the blinkers (on/off)
-RIGHT_BLINKER_POS = 4
-LEFT_BLINKER_POS = 5
+# in carla.LightState enum, the 4th and 5th bit represent the s (on/off)
+RIGHT__POS = 4
+LEFT__POS = 5
 
 # handle output directories
 map_idx = os.getenv("MAP")
@@ -173,6 +171,7 @@ class Car:
 
 
 # TODO: using carla's locations instead of GNSS, visual odometry, etc is just a temp hack
+# def carla_main(q: Queue):
 def carla_main():
   #fourcc = cv2.CV_FOURCC(*'MP4V')
   location, rotation, desire = None, None, None
@@ -194,6 +193,7 @@ def carla_main():
   print("Spawned Traffic Manager")
 
   """
+  # Spawn traffic/vehicles and pedestrians
   for i in range(N_VEHICLES):
     bp = random.choice(bp_lib.filter('vehicle'))
     try:
@@ -259,7 +259,7 @@ def carla_main():
   physics_control.gear_switch_time = 0.0
   vehicle.apply_physics_control(physics_control)
 
-  # TODO: add here (throttle, brake, steering, blinkers)
+  # TODO: add here (throttle, brake, steering, s)
   # temp controls
   #vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0))
   vehicle.set_autopilot(True)
@@ -290,6 +290,26 @@ def carla_main():
   gps.listen(lambda gps: car.process_gps(gps))
   print("GPS Spawned")
 
+  # init manual control
+  """
+  throttle_ease_out_counter = REPEAT_COUNTER
+  brake_ease_out_counter = REPEAT_COUNTER
+  steer_ease_out_counter = REPEAT_COUNTER
+  """
+
+  # vc = carla.VehicleControl(throttle=0, steer=0, brake=0, reverse=False)
+
+  is_autopilot_engaged = False
+  throttle_out = steer_out = brake_out = 0.
+  throttle_op = steer_op = brake_op = 0.
+  throttle_manual = steer_manual = brake_manual = 0.
+
+  old_steer = old_brake = old_throttle = 0.
+  throttle_manual_multiplier = 0.7  # keyboard signal is always 1
+  brake_manual_multiplier = 0.7  # keyboard signal is always 1
+  # steer_manual_multiplier = 45 * STEER_RATIO  # keyboard signal is always 1
+  steer_manual_multiplier = 45 * 15.
+
   # Enable synchronous mode
   settings = world.get_settings()
   settings.synchronous_mode = True 
@@ -305,13 +325,81 @@ def carla_main():
   start_time = time.time()
   try:
     print("Starting mainloop ...")
-    # TODO: collect steering angles, throttle, brakes and speed as well
+    for _ in range(20):
+      world.tick()
     while True:
       traffic_manager.update_vehicle_lights(vehicle, True)
       traffic_manager.auto_lane_change(vehicle, True)
-      for i in range(len(vehicles)):
-        traffic_manager.update_vehicle_lights(vehicles[i], True)
-        traffic_manager.auto_lane_change(vehicles[i], True)
+      # for i in range(len(vehicles)):
+      #   traffic_manager.update_vehicle_lights(vehicles[i], True)
+      #   traffic_manager.auto_lane_change(vehicles[i], True)
+
+      # apply manual controls
+      """
+      cruise_button = 0
+      throttle_out = steer_out = brake_out = 0.0
+      throttle_op = steer_op = brake_op = 0.0
+      throttle_manual = steer_manual = brake_manual = 0.0
+      """
+
+      """
+      if not q.empty():
+        message = q.get()
+        m = message.split("_")
+        if m[0] == "steer":
+          steer_manual = float(m[1])
+          # is_openpilot_engaged = False
+        elif m[0] == "throttle":
+          throttle_manual = float(m[1])
+          # is_openpilot_engaged = False
+        elif m[0] == "brake":
+          brake_manual = float(m[1])
+          # is_openpilot_engaged = False
+        elif m[0] == "reverse":
+          # cruise_button = CruiseButtons.CANCEL
+          # is_openpilot_engaged = False
+          pass
+        elif m[0] == "cruise":
+          if m[1] == "down":
+            # cruise_button = CruiseButtons.DECEL_SET
+            # is_openpilot_engaged = True
+            pass
+          elif m[1] == "up":
+            # cruise_button = CruiseButtons.RES_ACCEL
+            # is_openpilot_engaged = True
+            pass
+          elif m[1] == "cancel":
+            # cruise_button = CruiseButtons.CANCEL
+            # is_openpilot_engaged = False
+            pass
+        elif m[0] == "ignition":
+          # vehicle_state.ignition = not vehicle_state.ignition
+          pass
+        elif m[0] == "quit":
+          break
+
+        throttle_out = throttle_manual * throttle_manual_multiplier
+        steer_out = steer_manual * steer_manual_multiplier
+        brake_out = brake_manual * brake_manual_multiplier
+
+        old_steer = steer_out
+        old_throttle = throttle_out
+        old_brake = brake_out
+
+        if is_autopilot_engaged:
+          sm.update(0)
+
+          throttle_op = clip(sm['carControl'].actuators.accel / 1.6, 0.0, 1.0)
+          brake_op = clip(-sm['carControl'].actuators.accel / 4.0, 0.0, 1.0)
+          steer_op = sm['carControl'].actuators.steeringAngleDeg
+
+          throttle_out = throttle_op
+          steer_out = steer_op
+          brake_out = brake_op
+
+          steer_out = steer_rate_limit(old_steer, steer_out)
+          old_steer = steer_out
+        """
 
       lx,ly,lz = vehicle.get_location().x, vehicle.get_location().y ,vehicle.get_location().z
       #rot = vehicle.get_transform().get_forward_vector()
@@ -331,14 +419,14 @@ def carla_main():
               " : longtitude", car.gps_location['longitude'],
               " : altitude", car.gps_location['altitude'])
 
-        # get blinkers state => DESIRE
+        # get s state => DESIRE
         light_state = vehicle.get_light_state()
-        right_blinker = bool(light_state & (0x1 << RIGHT_BLINKER_POS))
-        left_blinker = bool(light_state & (0x1 << LEFT_BLINKER_POS))
-        print("Blinkers (l/r):", left_blinker, right_blinker)
-        if right_blinker and not left_blinker:
+        right_ = bool(light_state & (0x1 << RIGHT__POS))
+        left_ = bool(light_state & (0x1 << LEFT__POS))
+        print("s (l/r):", left_, right_)
+        if right_ and not left_:
           desire = 1  # desire: right
-        elif not right_blinker and left_blinker:
+        elif not right_ and left_:
           desire = 2  # desire: left
         else:
           desire = 0  # desire: forward
@@ -357,7 +445,6 @@ def carla_main():
 
 
 if __name__ == '__main__':
-  # TODO: put this in a big loop that keeps collecting data for different files
   print("Hello")
   try:
     carla_main()

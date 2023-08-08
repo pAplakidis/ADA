@@ -1,3 +1,6 @@
 [submodule "SDAL"]
 	path = SDAL
 	url = https://github.com/pAplakidis/SDAL.git
+[submodule "ADA_training_stack"]
+	path = ADA_training_stack
+	url = https://github.com/pAplakidis/ADA_training_stack.git
