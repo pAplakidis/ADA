@@ -69,6 +69,7 @@ class ComboModel(nn.Module):
       num_features *= s
     return num_features
 
+  # TODO: edit those since they belonged to MTP loss function
   # helper functions for handling outputs
 
   # splits the model predictions into mode probabilities and path
@@ -158,9 +159,30 @@ def load_model(path, model):
 
 
 # TODO: pass cereal messaging (sm, pm)
-def modeld_thread():
-  model = ComboModel()
+# TODO: output to log instead of terminal
+def modeld_thread(model, frame, desire, device):
+  with torch.no_grad:
+    # TODO: maybe preprocess those in camerad and sensord
+    X = torch.tensor([frame, frame]).float().to(device)
+    DES = torch.tensor([desire, desire]).float().to(device)
 
+    out_path, crossroad = model(X, DES)
+    trajectories, modes = model._get_trajectory_and_modes(out_path)
+
+    # TODO: sort based on probabilities
+    payload = {
+      "trajectories": trajectories[0],
+      "crossroad": crossroad[0]
+    }
+    # TODO: publish message instead of returning
+    return payload
 
 if __name__ == "__main__":
-  modeld_thread()
+  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+  print("[+] Using device:", device)
+
+  model = ComboModel()
+  model = load_model("./models/ComboModel.pth", model)
+  model.eval()
+
+  # modeld_thread(model, np.zeros((224,224), dtype=float))
