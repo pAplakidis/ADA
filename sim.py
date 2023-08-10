@@ -10,6 +10,10 @@ import numpy as np
 from multiprocessing import Process, Queue
 from threading import Thread
 
+import cereal.messaging as messaging
+from cereal import log
+from cereal.visionipc import VisionIpcServer, VisionStreamType
+
 """
 try:
     sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
@@ -37,6 +41,9 @@ DESIRE = {0: "forward",
 # in carla.LightState enum, the 4th and 5th bit represent the s (on/off)
 RIGHT__POS = 4
 LEFT__POS = 5
+
+PM = messaging.PubMaster(['roadCameraState', 'wideRoadCameraState', 'accelerometer', 'gyroscope', 'can', "gpsLocationExternal"])
+SM = messaging.SubMaster(['carControl', 'controlsState'])
 
 # handle output directories
 map_idx = os.getenv("MAP")

@@ -4,3 +4,6 @@
 [submodule "ADA_training_stack"]
 	path = ADA_training_stack
 	url = https://github.com/pAplakidis/ADA_training_stack.git
+[submodule "cereal"]
+	path = cereal
+	url = https://github.com/commaai/cereal.git
