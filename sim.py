@@ -27,7 +27,6 @@ import carla
 
 IMG_WIDTH = 1164
 IMG_HEIGHT = 874
-REC_TIME = 60       # recording length in seconds
 
 N_VEHICLES = 50     # number of vehicles spawned in the map
 N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
@@ -144,10 +143,12 @@ class Car:
     self.pose = None
     self.gyro = None
 
-  def process_img(self, img, location, rotation, desire):
+  def process_img(self, img):
     img = np.array(img.raw_data)
     img = img.reshape((IMG_HEIGHT, IMG_WIDTH, 4))
     img = img[:, :, :3]
+    # TODO: make img rgb and publish message for modeld
+    model_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     self.front_camera = img
 
   def process_imu(self, imu):
@@ -275,7 +276,7 @@ def carla_main():
   #spawn_point  = carla.Transform(carla.Location(x=-8., z=2.)) # NOTE: third-person camera view for debugging
   camera = world.spawn_actor(camera_bp, spawn_point, attach_to=vehicle)
   actor_list.append(camera_bp)
-  camera.listen(lambda img: car.process_img(img, location, rotation, desire))
+  camera.listen(lambda img: car.process_img(img))
   print("Camera Spawned")
 
   # spawn IMU
@@ -436,8 +437,6 @@ def carla_main():
         curr_time = time.time() - start_time
         print("Current Time: %.2fs"%curr_time)
         print()
-        if curr_time >= REC_TIME:
-          break
 
       world.tick()
   except KeyboardInterrupt:

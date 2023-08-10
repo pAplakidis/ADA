@@ -169,7 +169,7 @@ def modeld_thread(model, frame, desire, device):
     out_path, crossroad = model(X, DES)
     trajectories, modes = model._get_trajectory_and_modes(out_path)
 
-    # TODO: sort based on probabilities
+    # TODO: sort trajectories based on modes/probabilities
     payload = {
       "trajectories": trajectories[0],
       "crossroad": crossroad[0]
