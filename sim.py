@@ -12,7 +12,8 @@ from threading import Thread
 
 import cereal.messaging as messaging
 from cereal import log
-from cereal.visionipc import VisionIpcServer, VisionStreamType
+
+from camerad import Camerad
 
 """
 try:
@@ -283,7 +284,9 @@ def carla_main():
   #spawn_point  = carla.Transform(carla.Location(x=-8., z=2.)) # NOTE: third-person camera view for debugging
   camera = world.spawn_actor(camera_bp, spawn_point, attach_to=vehicle)
   actor_list.append(camera_bp)
-  camera.listen(lambda img: car.process_img(img))
+  # camera.listen(lambda img: car.process_img(img))
+  _camerad = Camerad(PM)
+  camera.listen(_camerad.camera_callback)
   print("Camera Spawned")
 
   # spawn IMU
