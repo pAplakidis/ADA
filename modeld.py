@@ -1,13 +1,19 @@
-#!/usr/bin/env python3
 import math
 import random
 import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import efficientnet_b2
 
+import rospy
+from cv_bridge import CvBridge
+from sensor_msgs.msg import Image
+
 ONEOVERSQRT2PI = 1.0 / math.sqrt(2 * math.pi)
+
+# TODO: this will later be a C++ loader (onnx)
 
 class MTP(nn.Module):
   # n_modes: number of paths output
@@ -158,31 +164,39 @@ def load_model(path, model):
   return model
 
 
-# TODO: pass ros messaging (sm, pm)
-# TODO: output to log instead of terminal
-def modeld_thread(model, frame, desire, device):
-  with torch.no_grad:
-    # TODO: maybe preprocess those in camerad and sensord
-    X = torch.tensor([frame, frame]).float().to(device)
-    DES = torch.tensor([desire, desire]).float().to(device)
+class Modeld:
+  def __init__(self):
+    self.subscriber = rospy.Subscriber("/camera/image", Image)
+    self.cv_bridge = CvBridge()
 
-    out_path, crossroad = model(X, DES)
-    trajectories, modes = model._get_trajectory_and_modes(out_path)
+    self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    self.model = ComboModel()
+    self.model = load_model("./models/ComboModel.pth", model)
+    self.model.eval()
 
-    # TODO: sort trajectories based on modes/probabilities
-    payload = {
-      "trajectories": trajectories[0],
-      "crossroad": crossroad[0]
-    }
-    # TODO: publish message instead of returning
-    return payload
+  def image_callback(self, bgr_image):
+    pass
 
-if __name__ == "__main__":
-  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-  print("[+] Using device:", device)
+  def run_model(self):
+    # TODO
+    # img_in = cv_bridge.imgmsg_to_cv2(image_msg, "bgr8")
+    pass
 
-  model = ComboModel()
-  model = load_model("./models/ComboModel.pth", model)
-  model.eval()
+    """
+    with torch.no_grad:
 
-  # modeld_thread(model, np.zeros((224,224), dtype=float))
+      # TODO: maybe preprocess those in camerad and sensord
+      X = torch.tensor([frame, frame]).float().to(device)
+      DES = torch.tensor([desire, desire]).float().to(device)
+
+      out_path, crossroad = model(X, DES)
+      trajectories, modes = model._get_trajectory_and_modes(out_path)
+
+      # TODO: sort trajectories based on modes/probabilities
+      payload = {
+        "trajectories": trajectories[0],
+        "crossroad": crossroad[0]
+      }
+      # TODO: publish message instead of returning
+      return payload
+    """

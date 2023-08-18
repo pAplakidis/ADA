@@ -14,6 +14,7 @@ import rospy
 import threading
 
 from camerad import Camerad
+from modeld import Modeld
 
 """
 try:
@@ -45,8 +46,7 @@ LEFT__POS = 5
 
 # TODO: use ROS instead
 rospy.init_node("ros_integration")
-# PM = messaging.PubMaster(['roadCameraState', 'accelerometer', 'gyroscope', 'can', "gpsLocationExternal"])
-# SM = messaging.SubMaster(['carControl', 'controlsState'])
+modeld = Modeld()
 
 # handle output directories
 map_idx = os.getenv("MAP")
