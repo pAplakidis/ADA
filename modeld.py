@@ -158,7 +158,7 @@ def load_model(path, model):
   return model
 
 
-# TODO: pass cereal messaging (sm, pm)
+# TODO: pass ros messaging (sm, pm)
 # TODO: output to log instead of terminal
 def modeld_thread(model, frame, desire, device):
   with torch.no_grad:

@@ -1,6 +1,20 @@
 # Autonomous Driving Agent (ADA)
 A toy self-driving car agent
 
+## Usage
+In three terminals run the following in each:
+```
+./start_ros.py
+```
+
+```
+./start_carla.py
+```
+
+```
+./sim.py
+```
+
 ### TODO:
 - ROS or cereal messaging
 - camera and sensors daemon to feed images, desires and other data to other daemons

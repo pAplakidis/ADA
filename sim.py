@@ -10,8 +10,8 @@ import numpy as np
 from multiprocessing import Process, Queue
 from threading import Thread
 
-import cereal.messaging as messaging
-from cereal import log
+import rospy
+import threading
 
 from camerad import Camerad
 
@@ -43,8 +43,10 @@ DESIRE = {0: "forward",
 RIGHT__POS = 4
 LEFT__POS = 5
 
-PM = messaging.PubMaster(['roadCameraState', 'wideRoadCameraState', 'accelerometer', 'gyroscope', 'can', "gpsLocationExternal"])
-SM = messaging.SubMaster(['carControl', 'controlsState'])
+# TODO: use ROS instead
+rospy.init_node("ros_integration")
+# PM = messaging.PubMaster(['roadCameraState', 'accelerometer', 'gyroscope', 'can', "gpsLocationExternal"])
+# SM = messaging.SubMaster(['carControl', 'controlsState'])
 
 # handle output directories
 map_idx = os.getenv("MAP")
@@ -135,7 +137,6 @@ WEATHER = weather["CloudyNoon"]
 actor_list = []
 vehicles = []
 walkers = []
-
 
 def render_img(img):
   cv2.imshow("DISPLAY", img)
@@ -285,7 +286,7 @@ def carla_main():
   camera = world.spawn_actor(camera_bp, spawn_point, attach_to=vehicle)
   actor_list.append(camera_bp)
   # camera.listen(lambda img: car.process_img(img))
-  _camerad = Camerad(PM)
+  _camerad = Camerad(car)
   camera.listen(_camerad.camera_callback)
   print("Camera Spawned")
 
