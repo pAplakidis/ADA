@@ -44,7 +44,7 @@ DESIRE = {0: "forward",
 RIGHT__POS = 4
 LEFT__POS = 5
 
-# TODO: use ROS instead
+print("[+] Initializing ROS and Modeld")
 rospy.init_node("ros_integration")
 modeld = Modeld()
 

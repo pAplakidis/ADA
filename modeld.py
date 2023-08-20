@@ -1,6 +1,8 @@
 import math
 import random
+import cv2
 import numpy as np
+import threading
 
 import torch
 import torch.nn as nn
@@ -11,9 +13,26 @@ import rospy
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 
+W, H = 224, 224 # model image shape
+
 ONEOVERSQRT2PI = 1.0 / math.sqrt(2 * math.pi)
 
 # TODO: this will later be a C++ loader (onnx)
+
+DESIRE = {0: "forward",
+          1: "right",
+          2: "left"}
+
+# specifically for desire (0, 1, 2)
+def one_hot_encode(arr):
+  new_arr = []
+  for i in range(len(arr)):
+    idx = arr[i]
+    tmp = [0, 0, 0]
+    tmp[idx] = 1
+    new_arr.append(tmp)
+  return np.array(new_arr)
+
 
 class MTP(nn.Module):
   # n_modes: number of paths output
@@ -22,30 +41,33 @@ class MTP(nn.Module):
     super(MTP, self).__init__()
     self.n_modes = n_modes
     self.fc1 = nn.Linear(in_feats, hidden_feats)
-    self.fc2 = nn.Linear(hidden_feats, int(n_modes * (path_len*2) + n_modes))
+    self.fc2 = nn.Linear(hidden_feats, int(n_modes * (path_len * 2) + n_modes))
 
   def forward(self, x):
     x = self.fc2(self.fc1(x))
 
     # normalize the probabilities to sum to 1 for inference
-    mode_probs = x[:, -self.n_modes:].clone()
+    mode_probs = x[:, -self.n_modes :].clone()
     if not self.training:
       mode_probs = F.softmax(mode_probs, dim=1)
-    
-    x = x[:, :-self.n_modes]
+
+    x = x[:, : -self.n_modes]
     return torch.cat((x, mode_probs), 1)
 
 
 # Inputs: 1 frame and desire
 # Outputs: trajectory and crossroad prediction
 class ComboModel(nn.Module):
-  def __init__(self, n_paths=3):
+  def __init__(self, n_modes=3, regression_loss_weigh=1., angle_threshold_degrees=5.):
     super(ComboModel, self).__init__()
-    self.n_paths = n_paths
-    effnet = efficientnet_b2(pretrained=True)
+    self.n_modes = n_modes
+    self.n_location_coords_predicted = 2  # (x,y) for each timestep
+    self.regression_loss_weight = regression_loss_weigh
+    self.angle_threshold = angle_threshold_degrees
 
+    effnet = efficientnet_b2(pretrained=True)
     self.vision = nn.Sequential(*(list(effnet.children())[:-1]))
-    self.policy = MTP(1411, n_modes=self.n_paths)
+    self.policy = MTP(1411, n_modes=self.n_modes)
     self.cr_detector = nn.Sequential(
       nn.Linear(1411, 1024),
       nn.BatchNorm1d(1024),
@@ -56,20 +78,20 @@ class ComboModel(nn.Module):
       nn.Linear(128, 84),
       nn.BatchNorm1d(84),
       nn.ReLU(),
-      nn.Linear(84, 1)
+      nn.Linear(84, 1),
     )
 
   def forward(self, x, desire):
     x = self.vision(x)
     x = x.view(-1, self.num_flat_features(x))
     x = torch.cat((x, desire), 1)
-    #print(x.shape)
+    # print(x.shape)
     path = self.policy(x)
     crossroad = torch.sigmoid(self.cr_detector(x))
     return path, crossroad
 
   def num_flat_features(self, x):
-    size = x.size()[1:] # all dimensions except the batch dimension
+    size = x.size()[1:]  # all dimensions except the batch dimension
     num_features = 1
     for s in size:
       num_features *= s
@@ -80,9 +102,16 @@ class ComboModel(nn.Module):
 
   # splits the model predictions into mode probabilities and path
   def _get_trajectory_and_modes(self, model_pred):
-    mode_probs = model_pred[:, -self.n_modes:].clone()
-    desired_shape = (model_pred.shape[0], self.n_modes, -1, self.n_location_coords_predicted)
-    trajectories_no_modes = model_pred[:, :-self.n_modes].clone().reshape(desired_shape)
+    mode_probs = model_pred[:, -self.n_modes :].clone()
+    desired_shape = (
+      model_pred.shape[0],
+      self.n_modes,
+      -1,
+      self.n_location_coords_predicted,
+    )
+    trajectories_no_modes = (
+      model_pred[:, : -self.n_modes].clone().reshape(desired_shape)
+    )
     return trajectories_no_modes, mode_probs
 
   # computes the angle between the last points of two paths (degrees)
@@ -90,35 +119,43 @@ class ComboModel(nn.Module):
   def _angle_between(ref_traj, traj_to_compare):
     EPSILON = 1e-5
 
-    if (ref_traj.ndim != 2 or traj_to_compare.ndim != 2 or
-            ref_traj.shape[1] != 2 or traj_to_compare.shape[1] != 2):
-        raise ValueError('Both tensors should have shapes (-1, 2).')
+    if (
+      ref_traj.ndim != 2
+      or traj_to_compare.ndim != 2
+      or ref_traj.shape[1] != 2
+      or traj_to_compare.shape[1] != 2
+    ):
+      raise ValueError("Both tensors should have shapes (-1, 2).")
 
     if torch.isnan(traj_to_compare[-1]).any() or torch.isnan(ref_traj[-1]).any():
-        return 180. - EPSILON
+      return 180.0 - EPSILON
 
-    traj_norms_product = float(torch.norm(ref_traj[-1]) * torch.norm(traj_to_compare[-1]))
+    traj_norms_product = float(
+      torch.norm(ref_traj[-1]) * torch.norm(traj_to_compare[-1])
+    )
 
     # If either of the vectors described in the docstring has norm 0, return 0 as the angle.
     if math.isclose(traj_norms_product, 0):
-        return 0.
+      return 0.0
 
     # We apply the max and min operations below to ensure there is no value
     # returned for cos_angle that is greater than 1 or less than -1.
     # This should never be the case, but the check is in place for cases where
     # we might encounter numerical instability.
     dot_product = float(ref_traj[-1].dot(traj_to_compare[-1]))
-    angle = math.degrees(math.acos(max(min(dot_product / traj_norms_product, 1), -1)))
+    angle = math.degrees(
+      math.acos(max(min(dot_product / traj_norms_product, 1), -1))
+    )
 
     if angle >= 180:
-        return angle - EPSILON
+      return angle - EPSILON
 
     return angle
 
   # compute the average of l2 norms of each row in the tensor
   @staticmethod
   def _compute_ave_l2_norms(tensor):
-    #l2_norms = torch.norm(tensor, p=2, dim=2)
+    # l2_norms = torch.norm(tensor, p=2, dim=2)
     l2_norms = torch.norm(tensor, p=2, dim=1)
     avg_distance = torch.mean(l2_norms)
     return avg_distance.item()
@@ -127,12 +164,12 @@ class ComboModel(nn.Module):
   def _compute_angles_from_ground_truth(self, target, trajectories):
     angles_from_ground_truth = []
     for mode, mode_trajectory in enumerate(trajectories):
-        # For each mode, we compute the angle between the last point of the predicted trajectory for that
-        # mode and the last point of the ground truth trajectory.
-        #angle = self._angle_between(target[0], mode_trajectory)
-        angle = self._angle_between(target, mode_trajectory)
+      # For each mode, we compute the angle between the last point of the predicted trajectory for that
+      # mode and the last point of the ground truth trajectory.
+      # angle = self._angle_between(target[0], mode_trajectory)
+      angle = self._angle_between(target, mode_trajectory)
 
-        angles_from_ground_truth.append((angle, mode))
+      angles_from_ground_truth.append((angle, mode))
     return angles_from_ground_truth
 
   # finds the index of the best mode given the angles from the ground truth
@@ -146,10 +183,12 @@ class ComboModel(nn.Module):
         break
 
     if max_angle_below_thresh_idx == -1:
-      best_mode = random.randint(0, self.n_modes-1)
+      best_mode = random.randint(0, self.n_modes - 1)
     else:
       distances_from_ground_truth = []
-      for angle, mode in angles_from_ground_truth[:max_angle_below_thresh_idx+1]:
+      for angle, mode in angles_from_ground_truth[
+        : max_angle_below_thresh_idx + 1
+      ]:
         norm = self._compute_ave_l2_norms(target - trajectories[mode, :, :])
         distances_from_ground_truth.append((norm, mode))
 
@@ -157,6 +196,7 @@ class ComboModel(nn.Module):
       best_mode = distances_from_ground_truth[0][1]
 
     return best_mode
+
 
 def load_model(path, model):
   model.load_state_dict(torch.load(path))
@@ -166,37 +206,45 @@ def load_model(path, model):
 
 class Modeld:
   def __init__(self):
-    self.subscriber = rospy.Subscriber("/camera/image", Image)
+    self.subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
     self.cv_bridge = CvBridge()
 
-    self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    self.model = ComboModel()
-    self.model = load_model("./models/ComboModel.pth", model)
+    # self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    self.device = "cpu"
+    self.model = ComboModel().to(self.device)
+    self.model = load_model("./models/ComboModel.pth", self.model)
     self.model.eval()
 
-  def image_callback(self, bgr_image):
-    pass
+    self.model_thread = threading.Thread(target=self.run_inference_loop, daemon=True)
+    self.model_thread.start()
 
-  def run_model(self):
-    # TODO
-    # img_in = cv_bridge.imgmsg_to_cv2(image_msg, "bgr8")
-    pass
+  def run_inference_loop(self):
+    while not rospy.is_shutdown():
+      rospy.spin()
 
-    """
-    with torch.no_grad:
+  def run_model(self, msg):
+    try:
+      img_in = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
+      img_in = cv2.resize(img_in, (W,H))
+      img_in = np.moveaxis(img_in, -1, 0)
+    except Exception as e:
+      print("[modeld]: error processing image:", e)
 
-      # TODO: maybe preprocess those in camerad and sensord
-      X = torch.tensor([frame, frame]).float().to(device)
-      DES = torch.tensor([desire, desire]).float().to(device)
+    try:
+      with torch.no_grad():
+        desire = np.array([1, 0, 0])  # pseudo desire always forward
+        X = torch.tensor([img_in, img_in]).float().to(self.device)
+        DES = torch.tensor([desire, desire]).float().to(self.device)
 
-      out_path, crossroad = model(X, DES)
-      trajectories, modes = model._get_trajectory_and_modes(out_path)
+        out_path, crossroad = self.model(X, DES)
+        trajectories, modes = self.model._get_trajectory_and_modes(out_path)
 
-      # TODO: sort trajectories based on modes/probabilities
-      payload = {
-        "trajectories": trajectories[0],
-        "crossroad": crossroad[0]
-      }
-      # TODO: publish message instead of returning
-      return payload
-    """
+        # TODO: sort trajectories based on modes/probabilities (in path-planner)
+        payload = {
+          "trajectories": trajectories[0],
+          "crossroad": crossroad[0]
+        }
+        # TODO: publish message instead of returning
+        print("[modeld]: outputs =>", payload)
+    except Exception as e:
+      print("[modeld]: error running model:", e)
