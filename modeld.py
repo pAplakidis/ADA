@@ -12,6 +12,7 @@ from torchvision.models import efficientnet_b2
 import rospy
 from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
+from std_msgs.msg import Float64MultiArray
 
 W, H = 224, 224 # model image shape
 
@@ -208,6 +209,7 @@ class Modeld:
   def __init__(self):
     self.subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
     self.cv_bridge = CvBridge()
+    self.publisher = rospy.Publisher("/model/outputs", Float64MultiArray, queue_size=10)
 
     # self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     self.device = "cpu"
@@ -238,13 +240,17 @@ class Modeld:
 
         out_path, crossroad = self.model(X, DES)
         trajectories, modes = self.model._get_trajectory_and_modes(out_path)
-
         # TODO: sort trajectories based on modes/probabilities (in path-planner)
-        payload = {
+        outputs = {
           "trajectories": trajectories[0],
           "crossroad": crossroad[0]
         }
-        # TODO: publish message instead of returning
-        print("[modeld]: outputs =>", payload)
+        print("[modeld]: outputs =>", outputs)
+
+        outputs_list = trajectories[0].tolist()
+        outputs_list.append(crossroad[0])
+        outputs_msg = Float64MultiArray()
+        outputs_msg.data = outputs_list
+        self.publisher.publish(outputs_msg)
     except Exception as e:
       print("[modeld]: error running model:", e)
