@@ -13,6 +13,7 @@ from threading import Thread
 import rospy
 import threading
 
+from rendererd import Rendererd
 from camerad import Camerad
 from modeld import Modeld
 
@@ -44,8 +45,13 @@ DESIRE = {0: "forward",
 RIGHT__POS = 4
 LEFT__POS = 5
 
-print("[+] Initializing ROS and Modeld")
+print("[+] Initializing ROS")
 rospy.init_node("ros_integration")
+
+print("[+] Initializing Rendererd")
+rendererd = Rendererd()
+
+print("[+] Initializing Modeld")
 modeld = Modeld()
 
 # handle output directories
@@ -137,10 +143,6 @@ WEATHER = weather["CloudyNoon"]
 actor_list = []
 vehicles = []
 walkers = []
-
-def render_img(img):
-  cv2.imshow("DISPLAY", img)
-  if cv2.waitKey(1) & 0xFF == 27: pass
 
 
 # TODO: move vehicle in here
@@ -421,7 +423,7 @@ def carla_main():
         rotation = [car.gyro[0], car.gyro[1], car.gyro[2]]  # NOTE: IMU data could be noisy
 
       if car.front_camera is not None:
-        render_img(car.front_camera)
+        rendererd._render_img(car.front_camera)
         print("[+] Frame: ", frame_id, "=>", car.front_camera.shape)
 
         print("[+] Car Location: (x y z)=(", location, ")")

@@ -1,8 +1,8 @@
-import math
 import random
+import threading
+import math
 import cv2
 import numpy as np
-import threading
 
 import torch
 import torch.nn as nn
@@ -18,6 +18,7 @@ W, H = 224, 224 # model image shape
 
 ONEOVERSQRT2PI = 1.0 / math.sqrt(2 * math.pi)
 
+# TODO: pth -> onnx (faster)
 # TODO: this will later be a C++ loader (onnx)
 
 DESIRE = {0: "forward",
@@ -34,6 +35,7 @@ def one_hot_encode(arr):
     new_arr.append(tmp)
   return np.array(new_arr)
 
+# TODO: move these in a renderer/UI thread
 
 class MTP(nn.Module):
   # n_modes: number of paths output
@@ -234,6 +236,7 @@ class Modeld:
 
     try:
       with torch.no_grad():
+        # TODO: receive from sensord (car_state msg => blinkers)
         desire = np.array([1, 0, 0])  # pseudo desire always forward
         X = torch.tensor([img_in, img_in]).float().to(self.device)
         DES = torch.tensor([desire, desire]).float().to(self.device)
@@ -247,10 +250,12 @@ class Modeld:
         }
         print("[modeld]: outputs =>", outputs)
 
-        outputs_list = trajectories[0].tolist()
+        # TODO: add modes/probabilities as well
+        outputs_list = trajectories[0].flatten().tolist()
         outputs_list.append(crossroad[0])
         outputs_msg = Float64MultiArray()
         outputs_msg.data = outputs_list
         self.publisher.publish(outputs_msg)
+
     except Exception as e:
       print("[modeld]: error running model:", e)
