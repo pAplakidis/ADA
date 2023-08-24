@@ -23,6 +23,7 @@ In three terminals run the following in each:
 ```
 
 ### TODO:
+- cannot work longterm, need to handle memory better
 - ROS messaging (DONE)
 - camera daemon to feed images  (DONE)
 - add try/except for every ROS message published and received
