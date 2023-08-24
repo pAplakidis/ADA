@@ -14,28 +14,10 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float64MultiArray
 
-W, H = 224, 224 # model image shape
-
-ONEOVERSQRT2PI = 1.0 / math.sqrt(2 * math.pi)
+from utils import *
 
 # TODO: pth -> onnx (faster)
 # TODO: this will later be a C++ loader (onnx)
-
-DESIRE = {0: "forward",
-          1: "right",
-          2: "left"}
-
-# specifically for desire (0, 1, 2)
-def one_hot_encode(arr):
-  new_arr = []
-  for i in range(len(arr)):
-    idx = arr[i]
-    tmp = [0, 0, 0]
-    tmp[idx] = 1
-    new_arr.append(tmp)
-  return np.array(new_arr)
-
-# TODO: move these in a renderer/UI thread
 
 class MTP(nn.Module):
   # n_modes: number of paths output
@@ -208,10 +190,14 @@ def load_model(path, model):
 
 
 class Modeld:
-  def __init__(self):
-    self.subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
+  def __init__(self, verbose=False):
+    self.verbose = verbose
+    self.camera_subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
+    self.desire_subscriber = rospy.Subscriber("/sensor/desire", Float64MultiArray, self._desire_callback)
     self.cv_bridge = CvBridge()
     self.publisher = rospy.Publisher("/model/outputs", Float64MultiArray, queue_size=10)
+
+    self.desire = np.array([1.0, 0.0, 0.0])
 
     # self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     self.device = "cpu"
@@ -226,6 +212,14 @@ class Modeld:
     while not rospy.is_shutdown():
       rospy.spin()
 
+  def _desire_callback(self, msg):
+    try:
+      self.desire = np.array(msg.data)
+      if(self.verbose):
+        print("[modeld]: received desire ->", self.desire)
+    except Exception as e:
+      print("[modeld]: error processing desire message ->", e)
+
   def run_model(self, msg):
     try:
       img_in = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
@@ -236,10 +230,8 @@ class Modeld:
 
     try:
       with torch.no_grad():
-        # TODO: receive from sensord (car_state msg => blinkers)
-        desire = np.array([1, 0, 0])  # pseudo desire always forward
         X = torch.tensor([img_in, img_in]).float().to(self.device)
-        DES = torch.tensor([desire, desire]).float().to(self.device)
+        DES = torch.tensor([self.desire, self.desire]).float().to(self.device)
 
         out_path, crossroad = self.model(X, DES)
         trajectories, modes = self.model._get_trajectory_and_modes(out_path)
@@ -248,7 +240,8 @@ class Modeld:
           "trajectories": trajectories[0],
           "crossroad": crossroad[0]
         }
-        print("[modeld]: outputs =>", outputs)
+        if self.verbose:
+          print("[modeld]: outputs =>", outputs)
 
         # TODO: add modes/probabilities as well
         outputs_list = trajectories[0].flatten().tolist()

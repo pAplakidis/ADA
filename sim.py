@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
+import threading
+import os
+import sys
 import random
 import math
-import glob
-import sys
-import os
 import time
 import cv2
 import numpy as np
 from multiprocessing import Process, Queue
-from threading import Thread
 
 import rospy
-import threading
+from std_msgs.msg import Float64MultiArray
 
+from utils import *
 from rendererd import Rendererd
 from camerad import Camerad
 from modeld import Modeld
+from plannerd import Plannerd
 
 """
 try:
@@ -27,32 +28,31 @@ except IndexError as e:
   print("index error", e)
 """
 
-
 import carla
 
 # EXAMPLE RUN: OUT_PATH="../collected_data/23/" MAP=2 ./carla_collector.py
 
-IMG_WIDTH = 1164
-IMG_HEIGHT = 874
-
 N_VEHICLES = 50     # number of vehicles spawned in the map
 N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
 
-DESIRE = {0: "forward",
-          1: "right",
-          2: "left"}
 # in carla.LightState enum, the 4th and 5th bit represent the s (on/off)
 RIGHT__POS = 4
 LEFT__POS = 5
 
+
+# init daemons
 print("[+] Initializing ROS")
 rospy.init_node("ros_integration")
+desire_pm = rospy.Publisher("/sensor/desire", Float64MultiArray, queue_size=10)
 
 print("[+] Initializing Rendererd")
 rendererd = Rendererd()
 
 print("[+] Initializing Modeld")
 modeld = Modeld()
+
+print("[+] Initializing Plannerd")
+modeld = Plannerd()
 
 # handle output directories
 map_idx = os.getenv("MAP")
@@ -162,6 +162,7 @@ class Car:
     model_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     self.front_camera = img
 
+  # TODO: for other sensors publish messages to /sensor/... here
   def process_imu(self, imu):
     self.bearing_deg = math.degrees(imu.compass)
     self.acceleration = [imu.accelerometer.x, imu.accelerometer.y, imu.accelerometer.z]
@@ -445,6 +446,8 @@ def carla_main():
         else:
           desire = 0  # desire: forward
         print("DESIRE:", desire, "=>", DESIRE[desire])
+        desire = one_hot_encode(desire)
+        desire_pm.publish(Float64MultiArray(data=desire))
 
         frame_id += 1
         curr_time = time.time() - start_time

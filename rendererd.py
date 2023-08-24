@@ -15,7 +15,11 @@ from std_msgs.msg import Float64MultiArray
 
 # TODO: later on make a full grid UI
 class Rendererd:
-  def __init__(self):
+  def __init__(self, n_modes=3, trajectory_length=200, n_coords=2):
+    self.n_modes = n_modes
+    self.trajectory_length = trajectory_length
+    self.n_coords = n_coords
+
     # self.subscriber = rospy.Subscriber("/camera/image", Image, self.process_camera_data)
     self.subscriber = rospy.Subscriber("/model/outputs", Float64MultiArray, self.plot_trajectories)
     self.cv_bridge = CvBridge()
@@ -33,9 +37,8 @@ class Rendererd:
 
   def plot_trajectories(self, msg):
     self.model_outputs = msg.data
-    self.trajectories = np.array(self.model_outputs[:-1]).reshape((3, 200, 2)) # TODO: generalize it with arguments
+    self.trajectories = np.array(self.model_outputs[:-1]).reshape((self.n_modes, self.trajectory_length, self.n_coords)) # TODO: generalize it with arguments
     self.crossroad = self.model_outputs[-1]
-    print("[rendererd]: model_outputs ->", self.trajectories.shape, self.crossroad)
 
     if self.fig:
       self.fig.data = []
