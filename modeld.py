@@ -235,16 +235,18 @@ class Modeld:
 
         out_path, crossroad = self.model(X, DES)
         trajectories, modes = self.model._get_trajectory_and_modes(out_path)
-        # TODO: sort trajectories based on modes/probabilities (in path-planner)
+        xy_path = trajectories[0][0]
+        for idx, pred_path in enumerate(trajectories[0]):
+          if modes[0][idx] == torch.max(modes[0]):
+            xy_path = trajectories[0][idx]
         outputs = {
-          "trajectories": trajectories[0],
+          "trajectory": xy_path,
           "crossroad": crossroad[0]
         }
         if self.verbose:
           print("[modeld]: outputs =>", outputs)
 
-        # TODO: add modes/probabilities as well
-        outputs_list = trajectories[0].flatten().tolist()
+        outputs_list = xy_path.flatten().tolist()
         outputs_list.append(crossroad[0])
         outputs_msg = Float64MultiArray()
         outputs_msg.data = outputs_list

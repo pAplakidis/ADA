@@ -12,16 +12,17 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float64MultiArray
 
+from utils import *
+
 
 # TODO: later on make a full grid UI
 class Rendererd:
-  def __init__(self, n_modes=3, trajectory_length=200, n_coords=2):
-    self.n_modes = n_modes
+  def __init__(self, trajectory_length=TRAJECTORY_LENGTH, n_coords=N_COORDINATES):
     self.trajectory_length = trajectory_length
     self.n_coords = n_coords
 
     # self.subscriber = rospy.Subscriber("/camera/image", Image, self.process_camera_data)
-    self.subscriber = rospy.Subscriber("/model/outputs", Float64MultiArray, self.plot_trajectories)
+    self.subscriber = rospy.Subscriber("/model/outputs", Float64MultiArray, self.plot_trajectory)
     self.cv_bridge = CvBridge()
 
     self.fig = go.FigureWidget()
@@ -35,47 +36,36 @@ class Rendererd:
 
       # self.render_display()
 
-  def plot_trajectories(self, msg):
+  def plot_trajectory(self, msg):
     self.model_outputs = msg.data
-    self.trajectories = np.array(self.model_outputs[:-1]).reshape((self.n_modes, self.trajectory_length, self.n_coords)) # TODO: generalize it with arguments
+    self.xy_path = np.array(self.model_outputs[:-1]).reshape((self.trajectory_length, self.n_coords))
     self.crossroad = self.model_outputs[-1]
 
     if self.fig:
       self.fig.data = []
-      for idx, pred_path in enumerate(self.trajectories):
-        path_x = pred_path[:, 0]
-        path_y = pred_path[:, 1]
-        # if modes[0][idx] == torch.max(modes[0]):
-        #   marker = {"color": "red"}
-        #   name = "best_path"
-        # else:
-        marker = {"color": "blue"}
-        name = "path"+str(idx)
-        self.fig.add_scatter(x=path_x, y=path_y, name=name, marker=marker)
+      path_x = self.xy_path[:, 0]
+      path_y = self.xy_path[:, 1]
+      marker = {"color": "blue"}
+      self.fig.add_scatter(x=path_x, y=path_y, name="path", marker=marker)
 
   def render_display(self):
-    # plot trajectories
+    # plot path
     if self.fig:
       self.fig.update_layout(xaxis_range=[-50,50])
       self.fig.update_layout(yaxis_range=[0,50])
 
-      if self.trajectories and self.crossroad:
+      if self.xy_path is not None and self.crossroad is not None:
         self._figshow(self.fig)
 
   def _render_img(self, img):
     cv2.imshow("DISPLAY", img)
     if cv2.waitKey(1) & 0xFF == 27: pass
 
-    # plot trajectories
-    if self.fig:
-      self.fig.update_layout(xaxis_range=[-50,50])
-      self.fig.update_layout(yaxis_range=[0,50])
-
-      if self.trajectories is not None and self.crossroad is not None:
-        self._figshow(self.fig)
+    # plot path
+    self.render_display()
 
   @staticmethod
-  # for plotting trajectories
+  # for plotting path
   def _figshow(fig):
     buf = io.BytesIO()
     pio.write_image(fig, buf)

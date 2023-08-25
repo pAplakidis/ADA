@@ -4,10 +4,7 @@ import numpy as np
 import rospy
 from std_msgs.msg import Float64MultiArray
 
-# TRAJECTORY_LENGTH = 200 # TODO: move this and other global variables to utils.py
-
-# TODO: get the model's output trajectories as inputs (sort by probablity)
-# TODO: smoothen out the path curve
+# TODO: smoothen out the path curve, or wait for it to be mean,std,prob instead of xy_points,prob
 class LateralPlanner:
   def __init__(self, verbose=False, n_modes=3, trajectory_length=200, n_coords=2):
     self.verbose = verbose
@@ -17,19 +14,18 @@ class LateralPlanner:
 
     self.desire = np.array([1, 0, 0]) # forward as default
     self.path_probs = np.zeros(n_modes)
-    self.paths_xy = np.zeros((n_modes, trajectory_length, n_coords))
+    self.xy_path = np.zeros((trajectory_length, n_coords))
 
   def run_inference_loop(self):
     while not rospy.is_shutdown():
       rospy.spin()
 
   def update(self, model_outputs):
-    # TODO: get desire?
-    # TODO: get modes/path_probabilities
-    self.paths_xy = np.array(model_outputs[:-1]).reshape((self.n_modes, self.trajectory_length, self.n_coords)) # TODO: generalize it with arguments
+    # TODO: get desire
+    self.xy_path= np.array(model_outputs[:-1]).reshape((self.trajectory_length, self.n_coords))
     self.crossroad = model_outputs[-1]
     if self.verbose:
-      print("[plannerd]: model_outputs ->", self.paths_xy.shape, self.crossroad)
+      print("[plannerd]: model_outputs ->", self.xy_path.shape, self.crossroad)
 
 
 class LongitudinalPlanner:

@@ -52,7 +52,7 @@ print("[+] Initializing Modeld")
 modeld = Modeld()
 
 print("[+] Initializing Plannerd")
-modeld = Plannerd()
+plannerd = Plannerd()
 
 # handle output directories
 map_idx = os.getenv("MAP")
