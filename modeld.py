@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import efficientnet_b2
+import onnxruntime
 
 import rospy
 from cv_bridge import CvBridge
@@ -15,79 +16,115 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float64MultiArray
 
 from utils import *
+from ADA_training_stack.lateral.model import MTP, ComboModel, load_model
 
-# TODO: pth -> onnx (faster)
 # TODO: this will later be a C++ loader (onnx)
+class Modeld:
+  def __init__(self, verbose=False):
+    self.verbose = verbose
+    self.camera_subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
+    self.desire_subscriber = rospy.Subscriber("/sensor/desire", Float64MultiArray, self._desire_callback)
+    self.cv_bridge = CvBridge()
+    self.publisher = rospy.Publisher("/model/outputs", Float64MultiArray, queue_size=10)
 
-class MTP(nn.Module):
-  # n_modes: number of paths output
-  # path_len: number of points of each path
-  def __init__(self, in_feats, n_modes=3, path_len=200, hidden_feats=4096):
-    super(MTP, self).__init__()
-    self.n_modes = n_modes
-    self.fc1 = nn.Linear(in_feats, hidden_feats)
-    self.fc2 = nn.Linear(hidden_feats, int(n_modes * (path_len * 2) + n_modes))
+    self.img_in = np.zeros((1, 3, 224, 224))
+    self.desire = np.array([1.0, 0.0, 0.0])
 
-  def forward(self, x):
-    x = self.fc2(self.fc1(x))
+    # init model
+    # classic pytorch
+    # if torch.cuda.is_available():
+    #   torch.cuda.init()
+    #   self.device = torch.device("cuda:0")
+    # else:
+    #   self.device = "cpu"
+    """
+    self.device = "cpu"
+    self.model = ComboModel().to(self.device)
+    self.model = load_model("./models/ComboModel.pth", self.model)
+    self.model.eval()
+    """
 
-    # normalize the probabilities to sum to 1 for inference
-    mode_probs = x[:, -self.n_modes :].clone()
-    if not self.training:
-      mode_probs = F.softmax(mode_probs, dim=1)
+    # onnx 
+    self.onnx_path = "./models/ComboModel.onnx"
+    self.session = onnxruntime.InferenceSession(self.onnx_path)
+    self.n_modes=3
+    self.regression_loss_weigh=1.
+    self.angle_threshold_degrees=5.
+    self.n_location_coords_predicted = 2
 
-    x = x[:, : -self.n_modes]
-    return torch.cat((x, mode_probs), 1)
+    self.model_thread = threading.Thread(target=self.run_inference_loop, daemon=True)
+    self.model_thread.start()
+
+  def run_inference_loop(self):
+    while not rospy.is_shutdown():
+      rospy.spin()
+
+  def _desire_callback(self, msg):
+    try:
+      self.desire = np.array(msg.data)
+      if(self.verbose):
+        print("[modeld]: received desire ->", self.desire)
+    except Exception as e:
+      print("[modeld]: error processing desire message ->", e)
+
+  def run_model(self, msg):
+    try:
+      img_in = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
+      img_in = cv2.resize(img_in, (W,H))
+      self.img_in = np.moveaxis(img_in, -1, 0)
+    except Exception as e:
+      print("[modeld]: error processing image:", e)
+
+    try:
+      with torch.no_grad():
+        X = torch.tensor([self.img_in]).float()#.to(self.device)
+        DES = torch.tensor([self.desire]).float()#.to(self.device)
 
 
-# Inputs: 1 frame and desire
-# Outputs: trajectory and crossroad prediction
-class ComboModel(nn.Module):
-  def __init__(self, n_modes=3, regression_loss_weigh=1., angle_threshold_degrees=5.):
-    super(ComboModel, self).__init__()
-    self.n_modes = n_modes
-    self.n_location_coords_predicted = 2  # (x,y) for each timestep
-    self.regression_loss_weight = regression_loss_weigh
-    self.angle_threshold = angle_threshold_degrees
+        """
+        # pth
+        out_path, crossroad = self.model(X, DES)
+        trajectories, modes = self._get_trajectory_and_modes(out_path.cpu().numpy())
+        xy_path = trajectories[0][0]
+        for idx, pred_path in enumerate(trajectories[0]):
+          if modes[0][idx] == np.max(modes[0]):
+            xy_path = trajectories[0][idx]
+        outputs = {
+          "trajectory": xy_path,
+          "crossroad": crossroad[0]
+        }
+        """
 
-    effnet = efficientnet_b2(pretrained=True)
-    self.vision = nn.Sequential(*(list(effnet.children())[:-1]))
-    self.policy = MTP(1411, n_modes=self.n_modes)
-    self.cr_detector = nn.Sequential(
-      nn.Linear(1411, 1024),
-      nn.BatchNorm1d(1024),
-      nn.ReLU(),
-      nn.Linear(1024, 128),
-      nn.BatchNorm1d(128),
-      nn.ReLU(),
-      nn.Linear(128, 84),
-      nn.BatchNorm1d(84),
-      nn.ReLU(),
-      nn.Linear(84, 1),
-    )
+        # onnx
+        outputs = self.session.run(["path", "crossroad"],
+                                   {
+                                      "road_image": X.cpu().numpy(),
+                                      "desire": DES.cpu().numpy()
+                                    })
 
-  def forward(self, x, desire):
-    x = self.vision(x)
-    x = x.view(-1, self.num_flat_features(x))
-    x = torch.cat((x, desire), 1)
-    # print(x.shape)
-    path = self.policy(x)
-    crossroad = torch.sigmoid(self.cr_detector(x))
-    return path, crossroad
+        path, crossroad = outputs
+        trajectories, modes = self._get_trajectory_and_modes(path)
+        xy_path = trajectories[0][0]
+        for idx, pred_path in enumerate(trajectories[0]):
+          if modes[0][idx] == np.max(modes[0]):
+            xy_path = trajectories[0][idx]
 
-  def num_flat_features(self, x):
-    size = x.size()[1:]  # all dimensions except the batch dimension
-    num_features = 1
-    for s in size:
-      num_features *= s
-    return num_features
+        if self.verbose:
+          print("[modeld]: outputs =>", outputs)
 
-  # TODO: edit those since they belonged to MTP loss function
-  # helper functions for handling outputs
+        outputs_list = xy_path.flatten().tolist()
+        outputs_list.append(crossroad[0])
+        outputs_msg = Float64MultiArray()
+        outputs_msg.data = outputs_list
+        self.publisher.publish(outputs_msg)
 
+    except Exception as e:
+      print("[modeld]: error running model:", e)
+
+  # path processing functions
   # splits the model predictions into mode probabilities and path
   def _get_trajectory_and_modes(self, model_pred):
-    mode_probs = model_pred[:, -self.n_modes :].clone()
+    mode_probs = model_pred[:, -self.n_modes :].copy()
     desired_shape = (
       model_pred.shape[0],
       self.n_modes,
@@ -95,7 +132,7 @@ class ComboModel(nn.Module):
       self.n_location_coords_predicted,
     )
     trajectories_no_modes = (
-      model_pred[:, : -self.n_modes].clone().reshape(desired_shape)
+      model_pred[:, : -self.n_modes].copy().reshape(desired_shape)
     )
     return trajectories_no_modes, mode_probs
 
@@ -181,76 +218,3 @@ class ComboModel(nn.Module):
       best_mode = distances_from_ground_truth[0][1]
 
     return best_mode
-
-
-def load_model(path, model):
-  model.load_state_dict(torch.load(path))
-  print("Loaded model from", path)
-  return model
-
-
-class Modeld:
-  def __init__(self, verbose=False):
-    self.verbose = verbose
-    self.camera_subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
-    self.desire_subscriber = rospy.Subscriber("/sensor/desire", Float64MultiArray, self._desire_callback)
-    self.cv_bridge = CvBridge()
-    self.publisher = rospy.Publisher("/model/outputs", Float64MultiArray, queue_size=10)
-
-    self.desire = np.array([1.0, 0.0, 0.0])
-
-    # self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    self.device = "cpu"
-    self.model = ComboModel().to(self.device)
-    self.model = load_model("./models/ComboModel.pth", self.model)
-    self.model.eval()
-
-    self.model_thread = threading.Thread(target=self.run_inference_loop, daemon=True)
-    self.model_thread.start()
-
-  def run_inference_loop(self):
-    while not rospy.is_shutdown():
-      rospy.spin()
-
-  def _desire_callback(self, msg):
-    try:
-      self.desire = np.array(msg.data)
-      if(self.verbose):
-        print("[modeld]: received desire ->", self.desire)
-    except Exception as e:
-      print("[modeld]: error processing desire message ->", e)
-
-  def run_model(self, msg):
-    try:
-      img_in = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
-      img_in = cv2.resize(img_in, (W,H))
-      img_in = np.moveaxis(img_in, -1, 0)
-    except Exception as e:
-      print("[modeld]: error processing image:", e)
-
-    try:
-      with torch.no_grad():
-        X = torch.tensor([img_in, img_in]).float().to(self.device)
-        DES = torch.tensor([self.desire, self.desire]).float().to(self.device)
-
-        out_path, crossroad = self.model(X, DES)
-        trajectories, modes = self.model._get_trajectory_and_modes(out_path)
-        xy_path = trajectories[0][0]
-        for idx, pred_path in enumerate(trajectories[0]):
-          if modes[0][idx] == torch.max(modes[0]):
-            xy_path = trajectories[0][idx]
-        outputs = {
-          "trajectory": xy_path,
-          "crossroad": crossroad[0]
-        }
-        if self.verbose:
-          print("[modeld]: outputs =>", outputs)
-
-        outputs_list = xy_path.flatten().tolist()
-        outputs_list.append(crossroad[0])
-        outputs_msg = Float64MultiArray()
-        outputs_msg.data = outputs_list
-        self.publisher.publish(outputs_msg)
-
-    except Exception as e:
-      print("[modeld]: error running model:", e)
