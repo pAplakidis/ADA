@@ -80,7 +80,6 @@ class Modeld:
         X = torch.tensor([self.img_in]).float()#.to(self.device)
         DES = torch.tensor([self.desire]).float()#.to(self.device)
 
-
         """
         # pth
         out_path, crossroad = self.model(X, DES)

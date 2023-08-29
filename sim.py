@@ -30,8 +30,10 @@ except IndexError as e:
 
 import carla
 
-# EXAMPLE RUN: OUT_PATH="../collected_data/23/" MAP=2 ./carla_collector.py
+# EXAMPLE RUN: MAP=2 ./carla_collector.py
 
+# TODO: make this an env variable
+TRAFFIC = False     # determines whether to spawn cars or not
 N_VEHICLES = 50     # number of vehicles spawned in the map
 N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
 
@@ -205,20 +207,21 @@ def carla_main():
   traffic_manager.set_respawn_dormant_vehicles(True)
   print("Spawned Traffic Manager")
 
-  """
-  # Spawn traffic/vehicles and pedestrians
-  for i in range(N_VEHICLES):
-    bp = random.choice(bp_lib.filter('vehicle'))
-    try:
-      spawn_point = random.choice(world.get_map().get_spawn_points())
-      vhcl = world.spawn_actor(bp, spawn_point)
-      vhcl.set_autopilot(True)
-      #traffic_manager.update_vehicle_lights(vhcl, True)
-      vehicles.append(vhcl)
-    except:
-      continue
-  print(len(vehicles), "Vehicles Spawned")
+  # Spawn traffic/vehicles
+  if TRAFFIC:
+    for i in range(N_VEHICLES):
+      bp = random.choice(bp_lib.filter('vehicle'))
+      try:
+        spawn_point = random.choice(world.get_map().get_spawn_points())
+        vhcl = world.spawn_actor(bp, spawn_point)
+        vhcl.set_autopilot(True)
+        #traffic_manager.update_vehicle_lights(vhcl, True)
+        vehicles.append(vhcl)
+      except:
+        continue
+    print(len(vehicles), "Vehicles Spawned")
 
+  """
   # spawn pedestrians
   blueprintWalkers = bp_lib.filter("walker.pedestrian.*")
 
@@ -345,9 +348,10 @@ def carla_main():
     while True:
       traffic_manager.update_vehicle_lights(vehicle, True)
       traffic_manager.auto_lane_change(vehicle, True)
-      # for i in range(len(vehicles)):
-      #   traffic_manager.update_vehicle_lights(vehicles[i], True)
-      #   traffic_manager.auto_lane_change(vehicles[i], True)
+      if TRAFFIC:
+        for i in range(len(vehicles)):
+          traffic_manager.update_vehicle_lights(vehicles[i], True)
+          traffic_manager.auto_lane_change(vehicles[i], True)
 
       # apply manual controls
       """
