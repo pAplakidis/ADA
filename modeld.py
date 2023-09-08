@@ -20,7 +20,14 @@ from ADA_training_stack.lateral.model import MTP, ComboModel, load_model
 
 # TODO: this will later be a C++ loader (onnx)
 class Modeld:
-  def __init__(self, verbose=False):
+  def __init__(self, verbose=False, mode=0):
+    """
+    MODES:
+    0: "PathPlanner"
+    1: "ComboModel"
+    2: "SuperCombo"
+    """
+    self.mode = mode
     self.verbose = verbose
     self.camera_subscriber = rospy.Subscriber("/camera/image", Image, self.run_model)
     self.desire_subscriber = rospy.Subscriber("/sensor/desire", Float64MultiArray, self._desire_callback)
@@ -45,9 +52,15 @@ class Modeld:
     """
 
     # onnx 
-    self.onnx_path = "./models/ComboModel.onnx"
+    if self.mode == 0:
+      self.onnx_path = "./models/PathPlanner.onnx"
+    elif self.mode == 1:
+      self.onnx_path = "./models/ComboModel.onnx"
+    elif self.mode == 2:
+      pass
+
     self.session = onnxruntime.InferenceSession(self.onnx_path)
-    self.n_modes=3
+    self.n_modes=5
     self.regression_loss_weigh=1.
     self.angle_threshold_degrees=5.
     self.n_location_coords_predicted = 2
@@ -95,13 +108,24 @@ class Modeld:
         """
 
         # onnx
-        outputs = self.session.run(["path", "crossroad"],
-                                   {
-                                      "road_image": X.cpu().numpy(),
-                                      "desire": DES.cpu().numpy()
-                                    })
+        if self.mode == 0:
+          outputs = self.session.run(["path"],
+                                    {
+                                        "road_image": X.cpu().numpy(),
+                                        "desire": DES.cpu().numpy()
+                                      })
+          path = outputs[0]
+          crossroad = np.array([0], dtype=float)
+        elif self.mode == 1:
+          outputs = self.session.run(["path", "crossroad"],
+                                    {
+                                        "road_image": X.cpu().numpy(),
+                                        "desire": DES.cpu().numpy()
+                                      })
+          path, crossroad = outputs
+        elif self.mode == 2:
+          pass
 
-        path, crossroad = outputs
         trajectories, modes = self._get_trajectory_and_modes(path)
         xy_path = trajectories[0][0]
         for idx, pred_path in enumerate(trajectories[0]):

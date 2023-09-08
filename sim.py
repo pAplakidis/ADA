@@ -442,7 +442,7 @@ def carla_main():
         light_state = vehicle.get_light_state()
         right_ = bool(light_state & (0x1 << RIGHT__POS))
         left_ = bool(light_state & (0x1 << LEFT__POS))
-        print("s (l/r):", left_, right_)
+        print("Blinkers (l/r):", left_, right_)
         if right_ and not left_:
           desire = 1  # desire: right
         elif not right_ and left_:
