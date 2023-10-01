@@ -51,7 +51,7 @@ print("[+] Initializing Rendererd")
 rendererd = Rendererd()
 
 print("[+] Initializing Modeld")
-modeld = Modeld()
+modeld = Modeld(mode=1)
 
 print("[+] Initializing Plannerd")
 plannerd = Plannerd()

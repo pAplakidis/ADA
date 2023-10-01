@@ -53,9 +53,11 @@ class Modeld:
 
     # onnx 
     if self.mode == 0:
-      self.onnx_path = "./models/PathPlanner.onnx"
+      # self.onnx_path = "./models/PathPlanner.onnx"
+      self.onnx_path = "./models/PathPlanner_29-09-23.onnx"
     elif self.mode == 1:
-      self.onnx_path = "./models/ComboModel.onnx"
+      # self.onnx_path = "./models/ComboModel.onnx"
+      self.onnx_path = "./models/ComboModel_01-10-23.onnx"
     elif self.mode == 2:
       pass
 
