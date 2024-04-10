@@ -35,4 +35,5 @@ In three terminals run the following in each:
 - planner (longitudinal and lateral) daemon that preprocesses the path and feeds it to the controller
 - controls daemon that decides the overall controls from a path using PID
 - board daemon that handles the embedded system ADA runs on
+- monitord - Driver Monitoring using CNN
 

@@ -47,7 +47,7 @@ class Modeld:
     """
     self.device = "cpu"
     self.model = ComboModel().to(self.device)
-    self.model = load_model("./models/ComboModel.pth", self.model)
+    self.model = load_model("./models/ComboModel.pt", self.model)
     self.model.eval()
     """
 

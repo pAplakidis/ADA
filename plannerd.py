@@ -4,6 +4,7 @@ import numpy as np
 import rospy
 from std_msgs.msg import Float64MultiArray
 
+# TODO: reduce path points to ~33 (easier for controls)
 # TODO: smoothen out the path curve, or wait for it to be mean,std,prob instead of xy_points,prob
 class LateralPlanner:
   def __init__(self, verbose=False, trajectory_length=200, n_coords=2):

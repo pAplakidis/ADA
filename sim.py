@@ -30,9 +30,9 @@ except IndexError as e:
 
 import carla
 
-# EXAMPLE RUN: MAP=2 ./carla_collector.py
+# EXAMPLE RUN: MAP=2 ./sim.py
 
-# TODO: make this an env variable
+# TODO: make these env variables
 TRAFFIC = False     # determines whether to spawn cars or not
 N_VEHICLES = 50     # number of vehicles spawned in the map
 N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
@@ -40,6 +40,11 @@ N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
 # in carla.LightState enum, the 4th and 5th bit represent the s (on/off)
 RIGHT__POS = 4
 LEFT__POS = 5
+
+MODE = os.getenv("MODE")
+modes = {0: "Single-Task Model", 1: "Multi-Task Model"}
+if MODE:
+  print("Using")
 
 
 # init daemons
@@ -51,7 +56,7 @@ print("[+] Initializing Rendererd")
 rendererd = Rendererd()
 
 print("[+] Initializing Modeld")
-modeld = Modeld(mode=1)
+modeld = Modeld(mode=0)
 
 print("[+] Initializing Plannerd")
 plannerd = Plannerd()
