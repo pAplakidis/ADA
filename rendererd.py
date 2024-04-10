@@ -38,8 +38,10 @@ class Rendererd:
 
   def plot_trajectory(self, msg):
     self.model_outputs = msg.data
-    self.xy_path = np.array(self.model_outputs[:-1]).reshape((TRAJECTORY_LENGTH, N_COORDINATES))
-    self.crossroad = self.model_outputs[-1]
+    # TODO: make modular (switch to multitask, etc)
+    # self.xy_path = np.array(self.model_outputs[:-1]).reshape((TRAJECTORY_LENGTH, N_COORDINATES))
+    # self.crossroad = self.model_outputs[-1]
+    self.xy_path = np.array(self.model_outputs).reshape((TRAJECTORY_LENGTH, N_COORDINATES))
 
     # TODO: add this to path planner as well (or to modeld)
     # preprocess path: reduce trajectory length from 200 to 50
@@ -61,7 +63,8 @@ class Rendererd:
       self.fig.update_layout(xaxis_range=[-50,50])
       self.fig.update_layout(yaxis_range=[0,50])
 
-      if self.xy_path_norm is not None and self.crossroad is not None:
+      # if self.xy_path_norm is not None and self.crossroad is not None:
+      if self.xy_path_norm is not None:
         self._figshow(self.fig)
 
   def _render_img(self, img):

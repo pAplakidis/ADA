@@ -52,20 +52,28 @@ class Modeld:
     """
 
     # onnx 
-    if self.mode == 0:
-      # self.onnx_path = "./models/PathPlanner.onnx"
-      self.onnx_path = "./models/PathPlanner_29-09-23.onnx"
-    elif self.mode == 1:
-      # self.onnx_path = "./models/ComboModel.onnx"
-      self.onnx_path = "./models/ComboModel_01-10-23.onnx"
-    elif self.mode == 2:
-      pass
+    # if self.mode == 0:
+    #   # self.onnx_path = "./models/PathPlanner.onnx"
+    #   self.onnx_path = "./models/PathPlanner_29-09-23.onnx"
+    # elif self.mode == 1:
+    #   # self.onnx_path = "./models/ComboModel.onnx"
+    #   self.onnx_path = "./models/ComboModel_01-10-23.onnx"
+    # elif self.mode == 2:
+    #   pass
+    self.onnx_path = "./models/path_planner_gru.onnx"
 
+    # for model init
+    print("[modeld]: ORT device:", onnxruntime.get_device())
     self.session = onnxruntime.InferenceSession(self.onnx_path)
     self.n_modes=5
+    self.n_images = 5
+
+    # for trajectory post-processing
     self.regression_loss_weigh=1.
     self.angle_threshold_degrees=5.
     self.n_location_coords_predicted = 2
+
+    self.frames = []
 
     self.model_thread = threading.Thread(target=self.run_inference_loop, daemon=True)
     self.model_thread.start()
@@ -86,14 +94,21 @@ class Modeld:
     try:
       img_in = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
       img_in = cv2.resize(img_in, (W,H))
-      self.img_in = np.moveaxis(img_in, -1, 0)
+      self.frames.append(np.moveaxis(img_in, -1, 0))
+      if len(self.frames) > self.n_images:
+        del self.frames[0]
+      else:
+        return
     except Exception as e:
       print("[modeld]: error processing image:", e)
 
     try:
       with torch.no_grad():
-        X = torch.tensor([self.img_in]).float()#.to(self.device)
+        # X = torch.tensor([self.img_in]).float()#.to(self.device)
+        IN_FRAMES = torch.as_tensor(np.array([self.frames])).float()
         DES = torch.tensor([self.desire]).float()#.to(self.device)
+        if self.verbose:
+          print("[modeld]: input shapes (image, desire):", IN_FRAMES.shape,  DES.shape)
 
         """
         # pth
@@ -109,24 +124,32 @@ class Modeld:
         }
         """
 
+        # TODO: make modular (modes, etc)
         # onnx
-        if self.mode == 0:
-          outputs = self.session.run(["path"],
-                                    {
-                                        "road_image": X.cpu().numpy(),
+        # if self.mode == 0:
+        #   outputs = self.session.run(["path"],
+        #                             {
+        #                                 "road_image": X.cpu().numpy(),
+        #                                 "desire": DES.cpu().numpy()
+        #                               })
+        #   path = outputs[0]
+        #   crossroad = np.array([0], dtype=float)
+        # elif self.mode == 1:
+        #   outputs = self.session.run(["path", "crossroad"],
+        #                             {
+        #                                 "road_image": X.cpu().numpy(),
+        #                                 "desire": DES.cpu().numpy()
+        #                               })
+        #   path, crossroad = outputs
+        # elif self.mode == 2:
+        #   pass
+        outputs = self.session.run(["path"],
+                                   {
+                                        "road_image": IN_FRAMES.cpu().numpy(),
+                                        # "road_images": IN_FRAMES.cpu().numpy(),
                                         "desire": DES.cpu().numpy()
-                                      })
-          path = outputs[0]
-          crossroad = np.array([0], dtype=float)
-        elif self.mode == 1:
-          outputs = self.session.run(["path", "crossroad"],
-                                    {
-                                        "road_image": X.cpu().numpy(),
-                                        "desire": DES.cpu().numpy()
-                                      })
-          path, crossroad = outputs
-        elif self.mode == 2:
-          pass
+                                   })
+        path = outputs[0]
 
         trajectories, modes = self._get_trajectory_and_modes(path)
         xy_path = trajectories[0][0]
@@ -138,7 +161,7 @@ class Modeld:
           print("[modeld]: outputs =>", outputs)
 
         outputs_list = xy_path.flatten().tolist()
-        outputs_list.append(crossroad[0])
+        # outputs_list.append(crossroad[0])
         outputs_msg = Float64MultiArray()
         outputs_msg.data = outputs_list
         self.publisher.publish(outputs_msg)

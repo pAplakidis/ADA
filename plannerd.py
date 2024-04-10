@@ -28,8 +28,10 @@ class LateralPlanner:
 
   # TODO: publish lateral plan
   def update(self, model_outputs):
-    self.xy_path= np.array(model_outputs[:-1]).reshape((self.trajectory_length, self.n_coords))
-    self.crossroad = model_outputs[-1]
+    # TODO: modular (switch multitask, singletask)
+    # self.xy_path= np.array(model_outputs[:-1]).reshape((self.trajectory_length, self.n_coords))
+    # self.crossroad = model_outputs[-1]
+    self.xy_path= np.array(model_outputs).reshape((self.trajectory_length, self.n_coords))
     if self.verbose:
       print("[plannerd]: model_outputs ->", self.xy_path.shape, self.crossroad)
 
