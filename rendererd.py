@@ -17,12 +17,13 @@ from utils import *
 
 # TODO: later on make a full grid UI
 class Rendererd:
-  def __init__(self):
+  def __init__(self, combo=False):
+    self.combo = combo
     self.xy_path = np.zeros((TRAJECTORY_LENGTH, N_COORDINATES), dtype=float)
-    self.xy_path_norm = np.zeros((TRAJECTORY_LENGTH_FINAL, N_COORDINATES), dtype=float)
 
     # self.subscriber = rospy.Subscriber("/camera/image", Image, self.process_camera_data)
-    self.subscriber = rospy.Subscriber("/model/outputs", Float64MultiArray, self.plot_trajectory)
+    # self.subscriber = rospy.Subscriber("/model/outputs", Float64MultiArray, self.plot_trajectory)
+    self.subscriber = rospy.Subscriber("/planner/lateral_path", Float64MultiArray, self.plot_trajectory)
     self.cv_bridge = CvBridge()
 
     self.fig = go.FigureWidget()
@@ -37,24 +38,22 @@ class Rendererd:
       # self.render_display()
 
   def plot_trajectory(self, msg):
-    self.model_outputs = msg.data
+    # self.model_outputs = msg.data
+    self.planner_output = msg.data
     # TODO: make modular (switch to multitask, etc)
+
+    # directly from model
     # self.xy_path = np.array(self.model_outputs[:-1]).reshape((TRAJECTORY_LENGTH, N_COORDINATES))
     # self.crossroad = self.model_outputs[-1]
-    self.xy_path = np.array(self.model_outputs).reshape((TRAJECTORY_LENGTH, N_COORDINATES))
+    # self.xy_path = np.array(self.model_outputs).reshape((TRAJECTORY_LENGTH, N_COORDINATES))
 
-    # TODO: add this to path planner as well (or to modeld)
-    # preprocess path: reduce trajectory length from 200 to 50
-    idx = 0
-    for i in range(0, TRAJECTORY_LENGTH, TRAJECTORY_LENGTH // TRAJECTORY_LENGTH_FINAL):
-      self.xy_path_norm[idx] = self.xy_path[i]
-      idx += 1
+    self.xy_path = np.array(self.planner_output).reshape((PLAN_LENGTH, N_COORDINATES))
 
     if self.fig:
       self.fig.data = []
-      path_x = self.xy_path_norm[:, 0]
-      path_y = self.xy_path_norm[:, 1]
-      marker = {"color": "blue"}
+      path_x = self.xy_path[:, 0]
+      path_y = self.xy_path[:, 1]
+      marker = {"color": "blue"}  # TODO: color from green to red based on path probability
       self.fig.add_scatter(x=path_x, y=path_y, name="path", marker=marker)
 
   def render_display(self):
@@ -63,8 +62,8 @@ class Rendererd:
       self.fig.update_layout(xaxis_range=[-50,50])
       self.fig.update_layout(yaxis_range=[0,50])
 
-      # if self.xy_path_norm is not None and self.crossroad is not None:
-      if self.xy_path_norm is not None:
+      # if self.xy_path is not None and self.crossroad is not None:
+      if self.xy_path is not None:
         self._figshow(self.fig)
 
   def _render_img(self, img):

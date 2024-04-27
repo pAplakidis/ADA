@@ -19,6 +19,7 @@ from utils import *
 from ADA_training_stack.lateral.model import MTP, ComboModel, load_model
 
 # TODO: this will later be a C++ loader (onnx)
+# TODO: compensate for model latency
 class Modeld:
   def __init__(self, verbose=False, mode=0):
     """

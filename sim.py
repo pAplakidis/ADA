@@ -17,6 +17,7 @@ from rendererd import Rendererd
 from camerad import Camerad
 from modeld import Modeld
 from plannerd import Plannerd
+from controlsd import Controlsd
 
 """
 try:
@@ -51,6 +52,7 @@ if MODE:
 print("[+] Initializing ROS")
 rospy.init_node("ros_integration")
 desire_pm = rospy.Publisher("/sensor/desire", Float64MultiArray, queue_size=10)
+car_state_pm = rospy.Publisher("/car/state", Float64MultiArray, queue_size=10)
 
 print("[+] Initializing Rendererd")
 rendererd = Rendererd()
@@ -60,6 +62,9 @@ modeld = Modeld(mode=0)
 
 print("[+] Initializing Plannerd")
 plannerd = Plannerd()
+
+print("[+] Initializing Controlsd")
+controlsd = Controlsd()
 
 # handle output directories
 map_idx = os.getenv("MAP")
@@ -161,6 +166,11 @@ class Car:
     self.pose = None
     self.gyro = None
 
+    self.location = None
+    self.theta = None
+    self.velocity = None
+    self.state = []
+
   def process_img(self, img):
     img = np.array(img.raw_data)
     img = img.reshape((IMG_HEIGHT, IMG_WIDTH, 4))
@@ -188,6 +198,13 @@ class Car:
       "altitude": gps.altitude,
       "speed": 0,
     }
+
+  def update_state(self, location, theta, velocity):
+    # TODO: get info for car
+    self.location = location
+    self.theta = theta
+    self.velocity = velocity
+    self.state = [location, theta, velocity]
 
 
 # TODO: using carla's locations instead of GNSS, visual odometry, etc is just a temp hack
@@ -462,6 +479,20 @@ def carla_main():
         curr_time = time.time() - start_time
         print("Current Time: %.2fs"%curr_time)
         print()
+
+      # update car state (location, theta, velocity)
+      theta = rotation[1]
+
+      transform = vehicle.get_transform()
+      velocity = vehicle.get_velocity()
+      forward_vector = transform.get_forward_vector()
+      forward_velocity = velocity.x * forward_vector.x + velocity.y * forward_vector.y + velocity.z * forward_vector.z
+
+      car.update_state(location, theta, forward_velocity)
+      # print("[sim]: car.state:", car.state)
+      state_msg = Float64MultiArray()
+      state_msg.data = [car.location[0], car.location[1], car.location[2], car.theta, car.velocity]
+      car_state_pm.publish(state_msg)
 
       world.tick()
   except KeyboardInterrupt:

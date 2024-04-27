@@ -9,9 +9,9 @@ W, H = 224, 224 # model image shape
 
 N_TRAJECTORIES =  3     # 3 paths predicted by model
 TRAJECTORY_LENGTH = 200 # 200 points in each path
+PLAN_LENGTH = 33
 # NOTE: carla needs 200 to get the proper length, but it is too much for the controls
 # so we reduce and pseudo-normalize the trajectory length
-TRAJECTORY_LENGTH_FINAL = 50 # 50 points in each final path 
 N_COORDINATES = 2       # x, y
 
 ONEOVERSQRT2PI = 1.0 / math.sqrt(2 * math.pi)
