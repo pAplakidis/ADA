@@ -3,10 +3,11 @@ import numpy as np
 
 import rospy
 from std_msgs.msg import Float64MultiArray
-from utils import *
+from lib.utils import *
 
-# TODO: reduce path points to ~33 (easier for controls)
-# TODO: smoothen out the path curve, or wait for it to be mean,std,prob instead of xy_points,prob
+# NOTE: comma uses path planner to plan out controls like desired steering angle, gas/brake, lane changes, etc
+
+# TODO: smoothen out the path curve, or wait for it to be mean,std,prob instead of xy_points,prob (MDN)
 class LateralPlanner:
   def __init__(self, verbose=False, trajectory_length=TRAJECTORY_LENGTH, n_coords=2, combo=False):
     self.combo = combo
@@ -46,12 +47,16 @@ class LateralPlanner:
       self.lateral_plan[j][0] = self.xy_path[i][0]
       self.lateral_plan[j][1] = self.xy_path[i][1]
       j += 1
+    
+    # make sure path starts at (0,0)
+    self.lateral_plan[0, 0] = 0.0
+    self.lateral_plan[0, 1] = 0.0
 
     if self.verbose:
       if self.combo:
-        print("[plannerd]: model_outputs ->", self.xy_path.shape, self.crossroad)
+        print("[plannerd]: model_outputs ->", self.lateral_plan.shape, self.crossroad)
       else:
-        print("[plannerd]: lateral_plan ->", self.xy_path.shape)
+        print("[plannerd]: lateral_plan ->", self.lateral_plan.shape, self.lateral_plan)
 
     if self.combo:
       pass
@@ -73,10 +78,9 @@ class LongitudinalPlanner:
 class Plannerd:
   def __init__(self, verbose=False):
     self.subscriber = rospy.Subscriber("/model/outputs", Float64MultiArray, self.update_lateral)
-    # TODO: publisher -> /planner/trajectory, etc
 
     self.lateral_planner = LateralPlanner(verbose=verbose)
-    self.longitudinal_planner = LongitudinalPlanner()
+    # self.longitudinal_planner = LongitudinalPlanner()
 
   def update_lateral(self, msg):
     self.lateral_planner.update(msg.data)

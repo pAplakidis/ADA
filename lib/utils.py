@@ -1,5 +1,4 @@
 import math
-import numpy as np
 
 # display image shape
 IMG_WIDTH = 1164
@@ -13,6 +12,9 @@ PLAN_LENGTH = 33
 # NOTE: carla needs 200 to get the proper length, but it is too much for the controls
 # so we reduce and pseudo-normalize the trajectory length
 N_COORDINATES = 2       # x, y
+
+MIN_STEER_VAL = -1.0
+MAX_STEER_VAL = 1.0
 
 ONEOVERSQRT2PI = 1.0 / math.sqrt(2 * math.pi)
 

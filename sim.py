@@ -9,16 +9,6 @@ import cv2
 import numpy as np
 from multiprocessing import Process, Queue
 
-import rospy
-from std_msgs.msg import Float64MultiArray
-
-from utils import *
-from rendererd import Rendererd
-from camerad import Camerad
-from modeld import Modeld
-from plannerd import Plannerd
-from controlsd import Controlsd
-
 """
 try:
     sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-*%d.%d-%s.egg' % (
@@ -31,21 +21,35 @@ except IndexError as e:
 
 import carla
 
+import rospy
+from std_msgs.msg import Float64MultiArray, Float32
+
+from lib.utils import *
+from sim_config import *
+from carla_world_settings import *
+
+from rendererd import Rendererd
+from camerad import Camerad
+from modeld import Modeld
+from plannerd import Plannerd
+from controlsd import Controlsd
+
 # EXAMPLE RUN: MAP=2 ./sim.py
-
-# TODO: make these env variables
-TRAFFIC = False     # determines whether to spawn cars or not
-N_VEHICLES = 50     # number of vehicles spawned in the map
-N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
-
-# in carla.LightState enum, the 4th and 5th bit represent the s (on/off)
-RIGHT__POS = 4
-LEFT__POS = 5
 
 MODE = os.getenv("MODE")
 modes = {0: "Single-Task Model", 1: "Multi-Task Model"}
 if MODE:
   print("Using")
+
+# TODO: make these a class? + cleanup
+vehicle = None
+
+def controls_callback(msg):
+  controls = msg.data
+  throttle_input = 0.5
+  steering_angle = controls
+  print("[sim]: controls = ", controls)
+  vehicle.apply_control(carla.VehicleControl(throttle=throttle_input, steer=steering_angle))
 
 
 # init daemons
@@ -53,6 +57,7 @@ print("[+] Initializing ROS")
 rospy.init_node("ros_integration")
 desire_pm = rospy.Publisher("/sensor/desire", Float64MultiArray, queue_size=10)
 car_state_pm = rospy.Publisher("/car/state", Float64MultiArray, queue_size=10)
+controls_sb = rospy.Subscriber("/controlsd/controls", Float32, controls_callback)
 
 print("[+] Initializing Rendererd")
 rendererd = Rendererd()
@@ -64,7 +69,7 @@ print("[+] Initializing Plannerd")
 plannerd = Plannerd()
 
 print("[+] Initializing Controlsd")
-controlsd = Controlsd()
+controlsd = Controlsd(verbose=True)
 
 # handle output directories
 map_idx = os.getenv("MAP")
@@ -89,66 +94,8 @@ if map_idx == None:
   map_idx = 0
 else:
   map_idx = int(map_idx) - 1
-
-"""
-Town01  A small, simple town with a river and several bridges.
-Town02	A small simple town with a mixture of residential and commercial buildings.
-Town03	A larger, urban map with a roundabout and large junctions.
-Town04	A small town embedded in the mountains with a special "figure of 8" infinite highway.
-Town05	Squared-grid town with cross junctions and a bridge. It has multiple lanes per direction. Useful to perform lane changes.
-Town06	Long many lane highways with many highway entrances and exits. It also has a Michigan left.
-Town07	A rural environment with narrow roads, corn, barns and hardly any traffic lights.
-Town08	Secret "unseen" town used for the Leaderboard challenge
-Town09	Secret "unseen" town used for the Leaderboard challenge
-Town10	A downtown urban environment with skyscrapers, residential buildings and an ocean promenade.
-Town11	A Large Map that is undecorated. Serves as a proof of concept for the Large Maps feature.
-Town12	A Large Map with numerous different regions, including high-rise, residential and rural environments.
-"""
-maps = [
-  "Town01",
-  "Town02",
-  "Town03",
-  "Town04",
-  "Town05",
-  "Town06",
-  "Town07",
-  "Town08",
-  "Town09",
-  "Town10",
-  "Town11",
-  "Town12"
-  ]
 curr_map = maps[map_idx]
 
-weather = {
-  "ClearNoon": carla.WeatherParameters.ClearNoon,
-  "CloudyNoon": carla.WeatherParameters.CloudyNoon,
-  "WetNoon": carla.WeatherParameters.WetNoon,
-  "WetCloudyNoon": carla.WeatherParameters.WetCloudyNoon,
-  "MidRainyNoon": carla.WeatherParameters.MidRainyNoon,
-  "HardRainNoon": carla.WeatherParameters.HardRainNoon,
-  "SoftRainNoon": carla.WeatherParameters.SoftRainNoon,
-  "ClearSunset": carla.WeatherParameters.ClearSunset,
-  "CloudySunset": carla.WeatherParameters.CloudySunset,
-  "WetSunset": carla.WeatherParameters.WetSunset,
-  "WetCloudySunset": carla.WeatherParameters.WetCloudySunset,
-  "MidRainSunset": carla.WeatherParameters.MidRainSunset,
-  "HardRainSunset": carla.WeatherParameters.HardRainSunset,
-  "SoftRainSunset": carla.WeatherParameters.SoftRainSunset,
-  "ClearNight": carla.WeatherParameters(cloudiness=0.0,
-                                   precipitation=0.0,
-                                   sun_altitude_angle=-20.0),
-  "CloudyNight": carla.WeatherParameters(cloudiness=80.0,
-                                   precipitation=0.0,
-                                   sun_altitude_angle=-20.0),
-  "HardRainNight": carla.WeatherParameters(cloudiness=80.0,
-                                   precipitation=50.0,
-                                   sun_altitude_angle=-20.0),
-  "SoftRainNight": carla.WeatherParameters(cloudiness=80.0,
-                                   precipitation=25.0,
-                                   sun_altitude_angle=-20.0)
-
-  }
 WEATHER = weather["CloudyNoon"]
 
 # actors lists
@@ -205,11 +152,14 @@ class Car:
     self.theta = theta
     self.velocity = velocity
     self.state = [location, theta, velocity]
+    print("[=>] Car State:", self.state)
 
 
 # TODO: using carla's locations instead of GNSS, visual odometry, etc is just a temp hack
 # def carla_main(q: Queue):
 def carla_main():
+  global vehicle
+
   #fourcc = cv2.CV_FOURCC(*'MP4V')
   location, rotation, desire = None, None, None
 
@@ -300,7 +250,7 @@ def carla_main():
   # TODO: add here (throttle, brake, steering, s)
   # temp controls
   #vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0))
-  vehicle.set_autopilot(True)
+  vehicle.set_autopilot(CARLA_AUTOPILOT)
   actor_list.append(vehicle)
 
   # spawn camera
@@ -368,8 +318,9 @@ def carla_main():
     for _ in range(20):
       world.tick()
     while True:
-      traffic_manager.update_vehicle_lights(vehicle, True)
-      traffic_manager.auto_lane_change(vehicle, True)
+      if CARLA_AUTOPILOT:
+        traffic_manager.update_vehicle_lights(vehicle, True)
+        traffic_manager.auto_lane_change(vehicle, True)
       if TRAFFIC:
         for i in range(len(vehicles)):
           traffic_manager.update_vehicle_lights(vehicles[i], True)
@@ -442,10 +393,15 @@ def carla_main():
           old_steer = steer_out
         """
 
+      # get steering angle
+      control = vehicle.get_control()
+      steering_angle = control.steer  # TODO: do more with this
+
       lx,ly,lz = vehicle.get_location().x, vehicle.get_location().y ,vehicle.get_location().z
       #rot = vehicle.get_transform().get_forward_vector()
       #rx, ry, rz = rot.x, rot.y, rot.z
       location = [lx, ly, lz]
+
       if car.gyro is not None:
         rotation = [car.gyro[0], car.gyro[1], car.gyro[2]]  # NOTE: IMU data could be noisy
 
@@ -459,6 +415,7 @@ def carla_main():
         print("[->] GNSS DATA => latitude", car.gps_location['latitude'],
               " : longtitude", car.gps_location['longitude'],
               " : altitude", car.gps_location['altitude'])
+        print("[+] Steering Angle: ", steering_angle)
 
         # get s state => DESIRE
         light_state = vehicle.get_light_state()
@@ -481,11 +438,12 @@ def carla_main():
         print()
 
       # update car state (location, theta, velocity)
-      theta = rotation[1]
+      theta = rotation[2]
 
       transform = vehicle.get_transform()
       velocity = vehicle.get_velocity()
       forward_vector = transform.get_forward_vector()
+      # FIXME: gives negative value while the car is moving forward
       forward_velocity = velocity.x * forward_vector.x + velocity.y * forward_vector.y + velocity.z * forward_vector.z
 
       car.update_state(location, theta, forward_velocity)
@@ -500,7 +458,7 @@ def carla_main():
 
 
 if __name__ == '__main__':
-  print("Hello")
+  print("Starting CARLA")
   try:
     carla_main()
   except RuntimeError as re:
@@ -512,6 +470,8 @@ if __name__ == '__main__':
       a.destroy()
     for v in vehicles:
       v.destroy()
+    for w in walkers:
+      w.destroy()
     cv2.destroyAllWindows()
     print('Done')
 

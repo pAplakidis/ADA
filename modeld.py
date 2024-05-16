@@ -15,7 +15,7 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float64MultiArray
 
-from utils import *
+from lib.utils import *
 from ADA_training_stack.lateral.model import MTP, ComboModel, load_model
 
 # TODO: this will later be a C++ loader (onnx)
