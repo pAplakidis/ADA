@@ -3,6 +3,7 @@ CARLA_AUTOPILOT = False
 
 # TODO: make these env variables
 TRAFFIC = False     # determines whether to spawn cars or not
+PEDESTRIANS = False # determines whether to spawn pedestrians or not
 N_VEHICLES = 50     # number of vehicles spawned in the map
 N_PEDESTRIANS = 100 # number of pedestrians spawned in the map
 

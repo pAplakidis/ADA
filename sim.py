@@ -49,7 +49,9 @@ def controls_callback(msg):
   throttle_input = 0.5
   steering_angle = controls
   print("[sim]: controls = ", controls)
-  vehicle.apply_control(carla.VehicleControl(throttle=throttle_input, steer=steering_angle))
+
+  if vehicle is not None and not CARLA_AUTOPILOT:
+    vehicle.apply_control(carla.VehicleControl(throttle=throttle_input, steer=steering_angle))
 
 
 # init daemons
@@ -104,7 +106,6 @@ vehicles = []
 walkers = []
 
 
-# TODO: move vehicle in here
 class Car:
   def __init__(self):
     # TODO: properly init car components
@@ -122,7 +123,6 @@ class Car:
     img = np.array(img.raw_data)
     img = img.reshape((IMG_HEIGHT, IMG_WIDTH, 4))
     img = img[:, :, :3]
-    # TODO: make img rgb and publish message for modeld
     model_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     self.front_camera = img
 
@@ -147,7 +147,6 @@ class Car:
     }
 
   def update_state(self, location, theta, velocity):
-    # TODO: get info for car
     self.location = location
     self.theta = theta
     self.velocity = velocity
@@ -193,44 +192,43 @@ def carla_main():
         continue
     print(len(vehicles), "Vehicles Spawned")
 
-  """
   # spawn pedestrians
-  blueprintWalkers = bp_lib.filter("walker.pedestrian.*")
+  if PEDESTRIANS:
+    blueprintWalkers = bp_lib.filter("walker.pedestrian.*")
 
-  spawn_points = []
-  for i in range(N_PEDESTRIANS):
-    spawn_point = carla.Transform()
-    spawn_point.location = world.get_random_location_from_navigation()
-    if spawn_point.location != None:
-      spawn_points.append(spawn_point)
+    spawn_points = []
+    for i in range(N_PEDESTRIANS):
+      spawn_point = carla.Transform()
+      spawn_point.location = world.get_random_location_from_navigation()
+      if spawn_point.location != None:
+        spawn_points.append(spawn_point)
 
-  batch = []
-  for spawn_point in spawn_points:
-    bp_walker = random.choice(blueprintWalkers)
-    batch.append(carla.command.SpawnActor(bp_walker, spawn_point))
-  
-  results = client.apply_batch_sync(batch, True)
-  for i in range(len(results)):
-    if results[i].error:
-      print(results[i].error)
-    else:
-      walkers.append({"id": results[i].actor_id})
+    batch = []
+    for spawn_point in spawn_points:
+      bp_walker = random.choice(blueprintWalkers)
+      batch.append(carla.command.SpawnActor(bp_walker, spawn_point))
+    
+    results = client.apply_batch_sync(batch, True)
+    for i in range(len(results)):
+      if results[i].error:
+        print(results[i].error)
+      else:
+        walkers.append({"id": results[i].actor_id})
 
-  batch = []
-  walker_controller_bp = bp_lib.find("controller.ai.walker")
-  for i in range(len(walkers)):
-    batch.append(carla.command.SpawnActor(walker_controller_bp, carla.Transform(), walkers[i]["id"]))
-  
-  results = client.apply_batch_sync(batch, True)
-  for i in range(len(results)):
-    if results[i].error:
-      print(results[i].error)
-    else:
-      walkers[i]["con"] = results[i].actor_id
+    batch = []
+    walker_controller_bp = bp_lib.find("controller.ai.walker")
+    for i in range(len(walkers)):
+      batch.append(carla.command.SpawnActor(walker_controller_bp, carla.Transform(), walkers[i]["id"]))
+    
+    results = client.apply_batch_sync(batch, True)
+    for i in range(len(results)):
+      if results[i].error:
+        print(results[i].error)
+      else:
+        walkers[i]["con"] = results[i].actor_id
 
-  for i in range(len(walkers)):
-    actor_list.append(walkers[i])
-  """
+    for i in range(len(walkers)):
+      actor_list.append(walkers[i])
 
   # spawn main car
   vehicle_bp = bp_lib.filter('vehicle.tesla.*')[1]
@@ -246,10 +244,6 @@ def carla_main():
   physics_control.torque_curve = [[20.0, 500.0], [5000.0, 500.0]]
   physics_control.gear_switch_time = 0.0
   vehicle.apply_physics_control(physics_control)
-
-  # TODO: add here (throttle, brake, steering, s)
-  # temp controls
-  #vehicle.apply_control(carla.VehicleControl(throttle=1.0, steer=0.0))
   vehicle.set_autopilot(CARLA_AUTOPILOT)
   actor_list.append(vehicle)
 
@@ -280,26 +274,6 @@ def carla_main():
   gps.listen(lambda gps: car.process_gps(gps))
   print("GPS Spawned")
 
-  # init manual control
-  """
-  throttle_ease_out_counter = REPEAT_COUNTER
-  brake_ease_out_counter = REPEAT_COUNTER
-  steer_ease_out_counter = REPEAT_COUNTER
-  """
-
-  # vc = carla.VehicleControl(throttle=0, steer=0, brake=0, reverse=False)
-
-  is_autopilot_engaged = False
-  throttle_out = steer_out = brake_out = 0.
-  throttle_op = steer_op = brake_op = 0.
-  throttle_manual = steer_manual = brake_manual = 0.
-
-  old_steer = old_brake = old_throttle = 0.
-  throttle_manual_multiplier = 0.7  # keyboard signal is always 1
-  brake_manual_multiplier = 0.7  # keyboard signal is always 1
-  # steer_manual_multiplier = 45 * STEER_RATIO  # keyboard signal is always 1
-  steer_manual_multiplier = 45 * 15.
-
   # Enable synchronous mode
   settings = world.get_settings()
   settings.synchronous_mode = True 
@@ -325,73 +299,6 @@ def carla_main():
         for i in range(len(vehicles)):
           traffic_manager.update_vehicle_lights(vehicles[i], True)
           traffic_manager.auto_lane_change(vehicles[i], True)
-
-      # apply manual controls
-      """
-      cruise_button = 0
-      throttle_out = steer_out = brake_out = 0.0
-      throttle_op = steer_op = brake_op = 0.0
-      throttle_manual = steer_manual = brake_manual = 0.0
-      """
-
-      """
-      if not q.empty():
-        message = q.get()
-        m = message.split("_")
-        if m[0] == "steer":
-          steer_manual = float(m[1])
-          # is_openpilot_engaged = False
-        elif m[0] == "throttle":
-          throttle_manual = float(m[1])
-          # is_openpilot_engaged = False
-        elif m[0] == "brake":
-          brake_manual = float(m[1])
-          # is_openpilot_engaged = False
-        elif m[0] == "reverse":
-          # cruise_button = CruiseButtons.CANCEL
-          # is_openpilot_engaged = False
-          pass
-        elif m[0] == "cruise":
-          if m[1] == "down":
-            # cruise_button = CruiseButtons.DECEL_SET
-            # is_openpilot_engaged = True
-            pass
-          elif m[1] == "up":
-            # cruise_button = CruiseButtons.RES_ACCEL
-            # is_openpilot_engaged = True
-            pass
-          elif m[1] == "cancel":
-            # cruise_button = CruiseButtons.CANCEL
-            # is_openpilot_engaged = False
-            pass
-        elif m[0] == "ignition":
-          # vehicle_state.ignition = not vehicle_state.ignition
-          pass
-        elif m[0] == "quit":
-          break
-
-        throttle_out = throttle_manual * throttle_manual_multiplier
-        steer_out = steer_manual * steer_manual_multiplier
-        brake_out = brake_manual * brake_manual_multiplier
-
-        old_steer = steer_out
-        old_throttle = throttle_out
-        old_brake = brake_out
-
-        if is_autopilot_engaged:
-          sm.update(0)
-
-          throttle_op = clip(sm['carControl'].actuators.accel / 1.6, 0.0, 1.0)
-          brake_op = clip(-sm['carControl'].actuators.accel / 4.0, 0.0, 1.0)
-          steer_op = sm['carControl'].actuators.steeringAngleDeg
-
-          throttle_out = throttle_op
-          steer_out = steer_op
-          brake_out = brake_op
-
-          steer_out = steer_rate_limit(old_steer, steer_out)
-          old_steer = steer_out
-        """
 
       # get steering angle
       control = vehicle.get_control()
