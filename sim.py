@@ -256,7 +256,7 @@ def carla_main():
   spawn_point  = carla.Transform(carla.Location(x=0.8, z=1.13))  # dashcam location
   #spawn_point  = carla.Transform(carla.Location(x=-8., z=2.)) # NOTE: third-person camera view for debugging
   camera = world.spawn_actor(camera_bp, spawn_point, attach_to=vehicle)
-  actor_list.append(camera_bp)
+  actor_list.append(camera)
   # camera.listen(lambda img: car.process_img(img))
   _camerad = Camerad(car)
   camera.listen(_camerad.camera_callback)

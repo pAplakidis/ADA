@@ -6,7 +6,7 @@ IMG_HEIGHT = 874
 
 W, H = 224, 224 # model image shape
 
-N_TRAJECTORIES =  3     # 3 paths predicted by model
+N_TRAJECTORIES =  5     # 3 paths predicted by model
 TRAJECTORY_LENGTH = 200 # 200 points in each path
 PLAN_LENGTH = 33
 # NOTE: carla needs 200 to get the proper length, but it is too much for the controls
